@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="test/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         backupGlobals="false"
+         processIsolation="false"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd">
+    <testsuites>
+        <testsuite name="Tests">
+            <directory suffix="Test.php">test</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="DB_HOST" value="mysql" force="true"/>
+        <env name="DB_PORT" value="3306" force="true"/>
+        <env name="DB_DATABASE" value="cards_testing" force="true"/>
+        <env name="DB_USERNAME" value="cards" force="true"/>
+        <env name="DB_PASSWORD" value="cards" force="true"/>
+        <env name="VAULT_BASE_URL" value="http://vault:8080" force="true"/>
+        <env name="GATEWAY_BASE_URL" value="http://gateway:8080" force="true"/>
+        <env name="AMQP_HOST" value="rabbitmq" force="true"/>
+        <env name="AMQP_PORT" value="5672" force="true"/>
+        <env name="AMQP_USER" value="cards" force="true"/>
+        <env name="AMQP_PASSWORD" value="cards" force="true"/>
+        <env name="AMQP_VHOST" value="/" force="true"/>
+        <env name="DB_QUERY_LOG" value="false" force="true"/>
+        <env name="SCAN_CACHEABLE" value="false" force="true"/>
+        <env name="TRANSACTION_MAX_ATTEMPTS" value="3" force="true"/>
+    </php>
+    <source>
+        <include>
+            <directory suffix=".php">app</directory>
+        </include>
+    </source>
+</phpunit>
