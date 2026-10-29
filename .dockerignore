@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+runtime
+vendor
+.env
+.env.*
+!.env.example
+.phpunit.cache
+.phpunit.result.cache
+docker/data
+tests-output
+*.md
+!README.md
