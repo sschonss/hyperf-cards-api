@@ -1,0 +1,56 @@
+meta {
+  name: Cartão duplicado
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": "Visa Outra Pessoa",
+    "number": "4111111111111111",
+    "expiry_month": 12,
+    "expiry_year": 2034
+  }
+}
+
+tests {
+  test("recusa o mesmo BIN, final e validade", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(409);
+    expect(body.message).to.equal("Já existe um cartão ativo com o mesmo BIN, final e validade.");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a identidade do cartão guardado: BIN, final e validade. O nome pode ser outro. O PAN em si não é consultado, porque a API não o armazena. O request Criar Visa já gravou 411111 / 1111 / 12/2034.
+
+  Resposta esperada: HTTP 409 e a mensagem de cartão ativo duplicado. Soft delete não conta: existsDuplicate ignora cartão removido.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  CardService::create chama CardRepositoryInterface::existsDuplicate. No ORM isso é CardOrmRepository::existsDuplicate, com o escopo do SoftDeletes. No Query Builder é CardQueryBuilderRepository::existsDuplicate, com whereNull deleted_at. DomainException status 409.
+}

@@ -1,0 +1,56 @@
+meta {
+  name: Atualizar cartão
+  type: http
+  seq: 14
+}
+
+put {
+  url: {{baseUrl}}/cards/{{card_id}}
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": "Visa Mentoria Atualizada"
+  }
+}
+
+tests {
+  test("atualiza o nome e preserva a bandeira", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(200);
+    expect(data.holder_name).to.equal("Visa Mentoria Atualizada");
+    expect(data.brand).to.equal("visa");
+    expect(data.last_four).to.equal("1111");
+    expect(String(data.id)).to.equal(String(bru.getVar("card_id")));
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a atualização do nome. PAN, CVV, token, BIN, final e bandeira são recusados se forem enviados: a API não tem o PAN para regravar. A rota também aceita PATCH, no mesmo método.
+
+  Resposta esperada: HTTP 200, holder_name Visa Mentoria Atualizada, brand e final iguais.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  Rota PUT /cards/<id> e PATCH /cards/<id>, as duas em CardController::update. app/Request/CardUpdateRequest.php. CardService::update. Repositório: update. ORM: CardOrmRepository::update. Query Builder: CardQueryBuilderRepository::update, que também grava updated_at.
+}

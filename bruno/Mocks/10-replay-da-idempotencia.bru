@@ -1,0 +1,50 @@
+meta {
+  name: Replay da idempotência
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{gatewayUrl}}/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "token": "tok_outro",
+    "amount_cents": 1000,
+    "idempotency_key": "mentoria-gateway-aprovada"
+  }
+}
+
+tests {
+  test("a mesma chave devolve a mesma reference", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.status).to.equal("approved");
+    expect(body.reference).to.equal(bru.getVar("mock_reference"));
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o replay do mock. A chave é a mesma de Adquirente aprova. O token enviado agora é outro e o valor é o mesmo, mas o mock nem recalcula a regra: achou a chave em /data/store.json e devolve o corpo guardado, inclusive a mesma reference.
+
+  Resposta esperada: HTTP 200, status approved e reference igual à variável mock_reference.
+
+  Este request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.
+  Arquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.
+  O valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.
+  Na API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.
+  No worker, a proteção complementar está em TransactionProcessor::handle: se o status já não é pending, a mensagem é reconhecida e o adquirente não é chamado de novo.
+}

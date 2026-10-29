@@ -1,0 +1,38 @@
+meta {
+  name: Raiz da API
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("a raiz apresenta a API", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.name).to.equal("cards-api");
+    expect(body.health).to.equal("/health");
+    expect(body.cards).to.equal("/cards");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o endpoint de apresentação, útil para ver se a porta 9501 é a API e não um dos mocks.
+
+  Resposta esperada: HTTP 200, name cards-api e os caminhos /health, /cards e /transactions/<id>.
+
+  Caminho: config/routes.php Router::get / aponta para app/Controller/HealthController.php HealthController::index. Não há serviço, repositório nem fila.
+}

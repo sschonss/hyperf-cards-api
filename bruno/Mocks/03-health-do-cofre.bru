@@ -1,0 +1,40 @@
+meta {
+  name: Health do cofre
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{vaultUrl}}/health
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("o cofre responde ok", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.status).to.equal("ok");
+    expect(body.role).to.equal("vault");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra que a porta 8081 é o mock do cofre, não a API. O campo role vem da variável ROLE=vault.
+
+  Resposta esperada: HTTP 200, status ok, role vault.
+
+  Este request fala direto com o processo vault (ROLE=vault), porta 8081. Não passa pela API Hyperf.
+  Arquivo: docker/mocks/server.php, função handleVault. Ela recusa CVV, confere o Luhn e grava o PAN só em /data/store.json do volume do cofre. A resposta é o token.
+  Na API, o mesmo contrato é chamado por app/Integration/HttpVaultClient.php HttpVaultClient::tokenize.
+  O health está no topo de docker/mocks/server.php, antes de handleVault.
+}

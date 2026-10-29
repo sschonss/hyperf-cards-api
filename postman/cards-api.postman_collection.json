@@ -1,0 +1,1775 @@
+{
+  "info": {
+    "name": "Cards API",
+    "description": "Coleção da aula de cartões. A ordem é Cards, Mocks e Transactions. Cada request descreve o caminho no código. Variáveis: baseUrl, vaultUrl, gatewayUrl, card_id e transaction_id.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:9501"
+    },
+    {
+      "key": "vaultUrl",
+      "value": "http://127.0.0.1:8081"
+    },
+    {
+      "key": "gatewayUrl",
+      "value": "http://127.0.0.1:8082"
+    }
+  ],
+  "item": [
+    {
+      "name": "Cards",
+      "description": "Cadastro, validação, listagem, busca, atualização e remoção.\n\nOs PAN de teste são Visa 4111111111111111, Mastercard 5555555555554444, Elo 4011780000000006, Amex 378282246310005 e Hipercard 6062825624254001. A validade 12/2034 evita o seed, que usa 2030. O script de pós-resposta guarda card_id e card_id_hipercard.\n\nEsta pasta roda primeiro.",
+      "item": [
+        {
+          "name": "Criar Visa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra o cadastro de um Visa de teste. A validade 12/2034 não colide com o seed, que usa 2030.\n\nResposta esperada: HTTP 201. O JSON traz brand visa, BIN 411111, final 1111, masked_number e um token tok_. O PAN completo não volta.\n\nO id fica na variável card_id e segue para a busca, a atualização e as cobranças.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nNeste request o método é CardController::store e CardService::create, rota POST /cards.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Visa Mentoria\",\n  \"number\": \"4111111111111111\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"cria o cartao visa\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.brand).to.eql(\"visa\");",
+                  "  pm.expect(data.bin).to.eql(\"411111\");",
+                  "  pm.expect(data.last_four).to.eql(\"1111\");",
+                  "  pm.expect(data.masked_number).to.eql(\"411111******1111\");",
+                  "  pm.expect(data.token).to.match(/^tok_/);",
+                  "  pm.expect(data).to.not.have.property(\"number\");",
+                  "  pm.expect(JSON.stringify(data)).to.not.include(\"4111111111111111\");",
+                  "  save(\"card_id\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Mastercard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a faixa Mastercard 51-55. O PAN 5555555555554444 é o de teste clássico. A validade 12/2034 difere do seed (11/2030), então o cadastro é outro cartão, não uma duplicata.\n\nResposta esperada: HTTP 201, brand mastercard, BIN 555555, final 4444, token tok_.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nCardBrandDetector::detect olha os dois primeiros dígitos entre 51 e 55, e também a faixa 2221-2720. Método: CardController::store, CardService::create. Rota POST /cards.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Mastercard Mentoria\",\n  \"number\": \"5555555555554444\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"cria o cartao mastercard\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.brand).to.eql(\"mastercard\");",
+                  "  pm.expect(data.bin).to.eql(\"555555\");",
+                  "  pm.expect(data.last_four).to.eql(\"4444\");",
+                  "  pm.expect(data.token).to.match(/^tok_/);",
+                  "  pm.expect(JSON.stringify(data)).to.not.include(\"5555555555554444\");",
+                  "  save(\"card_id_mastercard\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Elo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra que Elo é testado antes da Visa. O BIN 401178 começa com 4, mas está na lista ELO_RANGES. Se a ordem estivesse invertida, este cartão seria classificado como Visa.\n\nResposta esperada: HTTP 201, brand elo, BIN 401178, final 0006.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nCardBrandDetector::isElo roda no início de CardBrandDetector::detect. Rota POST /cards, CardController::store, CardService::create.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Elo Mentoria\",\n  \"number\": \"4011780000000006\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"cria o cartao elo que comeca com 4\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.brand).to.eql(\"elo\");",
+                  "  pm.expect(data.bin).to.eql(\"401178\");",
+                  "  pm.expect(data.last_four).to.eql(\"0006\");",
+                  "  pm.expect(data.brand).to.not.eql(\"visa\");",
+                  "  save(\"card_id_elo\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Amex",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra um American Express de 15 dígitos, prefixo 37. O BIN continua sendo os seis primeiros e o final os quatro últimos. A máscara é sempre BIN, seis asteriscos e o final, mesmo quando o PAN tem 15 dígitos.\n\nResposta esperada: HTTP 201, brand amex, masked_number 378282******0005.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nCardBrandDetector::detect trata prefixo 34 ou 37 como amex. Rota POST /cards, CardController::store, CardService::create.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Amex Mentoria\",\n  \"number\": \"378282246310005\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"cria o cartao amex de 15 digitos\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.brand).to.eql(\"amex\");",
+                  "  pm.expect(data.bin).to.eql(\"378282\");",
+                  "  pm.expect(data.last_four).to.eql(\"0005\");",
+                  "  pm.expect(data.masked_number).to.eql(\"378282******0005\");",
+                  "  save(\"card_id_amex\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Hipercard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra o BIN 606282, reconhecido como Hipercard antes das outras faixas. O id vai para card_id_hipercard porque o request de remoção usa este cartão e preserva o Visa das cobranças.\n\nResposta esperada: HTTP 201, brand hipercard, BIN 606282, final 4001.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota POST /cards, CardController::store, CardService::create.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Hipercard Mentoria\",\n  \"number\": \"6062825624254001\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"cria o cartao hipercard\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.brand).to.eql(\"hipercard\");",
+                  "  pm.expect(data.bin).to.eql(\"606282\");",
+                  "  pm.expect(data.last_four).to.eql(\"4001\");",
+                  "  save(\"card_id_hipercard\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Luhn inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a rejeição de um PAN com o tamanho certo e o dígito verificador errado. A regex do FormRequest aceita 13 a 19 dígitos. Quem recusa é o Luhn, já no serviço, então a resposta é de domínio e não traz a chave errors.\n\nResposta esperada: HTTP 422, message \"Número do cartão inválido.\". Nada é gravado e o cofre não é chamado.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\napp/Exception/Handler/DomainExceptionHandler.php DomainExceptionHandler::handle monta o JSON. CardService::create chama Luhn::isValid e lança DomainException com status 422. Rota POST /cards, CardController::store.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Luhn Invalido\",\n  \"number\": \"4111111111111112\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"rejeita PAN que nao passa no Luhn\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Número do cartão inválido.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cartão vencido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a validade. O ano 2020 passa na regra do FormRequest (entre 2000 e 2100). CardService::assertExpiry considera o cartão válido até o fim do mês e recusa se essa data já passou.\n\nResposta esperada: HTTP 422, message \"Cartão vencido.\". O cofre não é chamado.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota POST /cards, CardController::store, CardService::create, método privado assertExpiry. A resposta sai por DomainExceptionHandler::handle.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Cartao Vencido\",\n  \"number\": \"4111111111111111\",\n  \"expiry_month\": 1,\n  \"expiry_year\": 2020\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"rejeita cartao vencido\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Cartão vencido.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Campos ausentes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a validação de entrada antes de qualquer regra de negócio. O corpo não tem PAN nem validade, e o nome vem vazio.\n\nResposta esperada: HTTP 422, message \"Os dados enviados são inválidos.\" e o objeto errors com number, holder_name, expiry_month e expiry_year. CardService não roda.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\napp/Request/CardStoreRequest.php CardStoreRequest::rules e messages. app/Exception/Handler/ValidationExceptionHandler.php ValidationExceptionHandler::handle. Rota POST /cards. O controller só chama o serviço depois de CardStoreRequest::validated.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"rejeita corpo incompleto\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.eql(\"Os dados enviados são inválidos.\");",
+                  "  pm.expect(body.errors).to.have.property(\"number\");",
+                  "  pm.expect(body.errors).to.have.property(\"holder_name\");",
+                  "  pm.expect(body.errors).to.have.property(\"expiry_month\");",
+                  "  pm.expect(body.errors).to.have.property(\"expiry_year\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CVV recusado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a redução de escopo PCI na borda. O CVV não tem coluna, não está em fillable e é recusado se aparecer no JSON. O mesmo vale para cvc e security_code.\n\nResposta esperada: HTTP 422, errors.cvv com a frase de que o CVV não pode ser enviado. O cartão Visa já criado não é alterado.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\napp/Request/FormRequest.php FormRequest::rejectFields é chamado por CardStoreRequest::withValidator. O cofre também recusa CVV em docker/mocks/server.php handleVault, mas este request para na API, antes do HTTP do cofre.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Com Cvv\",\n  \"number\": \"4111111111111111\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034,\n  \"cvv\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"recusa CVV\", function () {",
+                  "  pm.response.to.have.status(422);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.message).to.eql(\"Os dados enviados são inválidos.\");",
+                  "  pm.expect(body.errors).to.have.property(\"cvv\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cartão duplicado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards",
+            "description": "Demonstra a identidade do cartão guardado: BIN, final e validade. O nome pode ser outro. O PAN em si não é consultado, porque a API não o armazena. O request Criar Visa já gravou 411111 / 1111 / 12/2034.\n\nResposta esperada: HTTP 409 e a mensagem de cartão ativo duplicado. Soft delete não conta: existsDuplicate ignora cartão removido.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nCardService::create chama CardRepositoryInterface::existsDuplicate. No ORM isso é CardOrmRepository::existsDuplicate, com o escopo do SoftDeletes. No Query Builder é CardQueryBuilderRepository::existsDuplicate, com whereNull deleted_at. DomainException status 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Visa Outra Pessoa\",\n  \"number\": \"4111111111111111\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"recusa o mesmo BIN, final e validade\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Já existe um cartão ativo com o mesmo BIN, final e validade.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar com paginação",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards?page=1&per_page=2",
+            "description": "Demonstra a listagem paginada. page e per_page vêm da query string. per_page máximo é 50. A coleção já criou cinco cartões, então total é pelo menos 5. Com o seed aplicado, o total inclui também os cartões de 2030.\n\nResposta esperada: HTTP 200, data com 2 itens, meta.current_page 1, meta.per_page 2, meta.total e meta.last_page coerentes. Nenhum item traz o PAN.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota GET /cards. app/Request/CardIndexRequest.php CardIndexRequest::rules. CardController::index chama CardService::list, que chama CardRepositoryInterface::paginate. ORM: CardOrmRepository::paginate. Query Builder: CardQueryBuilderRepository::paginate. CardMapper::page monta data e meta."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"devolve uma pagina de dois cartoes\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.lengthOf(2);",
+                  "  pm.expect(body.meta.current_page).to.eql(1);",
+                  "  pm.expect(body.meta.per_page).to.eql(2);",
+                  "  pm.expect(body.meta.total).to.be.at.least(5);",
+                  "  pm.expect(body.meta.last_page).to.be.at.least(3);",
+                  "  pm.expect(body.data[0]).to.not.have.property(\"number\");",
+                  "  pm.expect(body.data[0].token).to.match(/^tok_/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filtrar por bandeira",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards?brand=visa&per_page=50",
+            "description": "Demonstra o filtro brand. O valor tem de ser uma das bandeiras de CardBrandDetector::BRANDS: visa, mastercard, elo, amex, hipercard. Outro valor volta 422 ainda no FormRequest.\n\nResposta esperada: HTTP 200 e todos os itens com brand visa. Entram o Visa desta coleção e, se o seed rodou, o cartão da Ada Lovelace.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota GET /cards. CardIndexRequest valida brand. CardController::index, CardService::list, paginate com o filtro. No ORM o where fica em CardOrmRepository::paginate. No Query Builder, em CardQueryBuilderRepository::paginate, junto com whereNull deleted_at."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"so devolve visa\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.meta.total).to.be.at.least(1);",
+                  "  pm.expect(body.data.length).to.be.at.least(1);",
+                  "  body.data.forEach(function (card) {",
+                  "    pm.expect(card.brand).to.eql(\"visa\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar cartão",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}",
+            "description": "Demonstra a leitura de um cartão pelo id capturado em Criar Visa. A rota só aceita dígitos.\n\nResposta esperada: HTTP 200, o mesmo id, brand visa e holder_name Visa Mentoria.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota GET /cards/<id>. CardController::show, CardService::show, CardRepositoryInterface::findById. Cartão ausente vira DomainException 404 em CardService::requireCard. ORM: Card::query()->find. Query Builder: Db::table com whereNull deleted_at."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"busca o visa criado\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(String(data.id)).to.eql(String(pm.collectionVariables.get(\"card_id\")));",
+                  "  pm.expect(data.brand).to.eql(\"visa\");",
+                  "  pm.expect(data.holder_name).to.eql(\"Visa Mentoria\");",
+                  "  pm.expect(data).to.not.have.property(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar cartão",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}",
+            "description": "Demonstra a atualização do nome. PAN, CVV, token, BIN, final e bandeira são recusados se forem enviados: a API não tem o PAN para regravar. A rota também aceita PATCH, no mesmo método.\n\nResposta esperada: HTTP 200, holder_name Visa Mentoria Atualizada, brand e final iguais.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota PUT /cards/<id> e PATCH /cards/<id>, as duas em CardController::update. app/Request/CardUpdateRequest.php. CardService::update. Repositório: update. ORM: CardOrmRepository::update. Query Builder: CardQueryBuilderRepository::update, que também grava updated_at.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holder_name\": \"Visa Mentoria Atualizada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"atualiza o nome e preserva a bandeira\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.holder_name).to.eql(\"Visa Mentoria Atualizada\");",
+                  "  pm.expect(data.brand).to.eql(\"visa\");",
+                  "  pm.expect(data.last_four).to.eql(\"1111\");",
+                  "  pm.expect(String(data.id)).to.eql(String(pm.collectionVariables.get(\"card_id\")));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remover Hipercard",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id_hipercard}}",
+            "description": "Demonstra o soft delete do Hipercard criado nesta coleção. O Visa de card_id continua, porque as cobranças usam ele. A linha não some: deleted_at é preenchido. A listagem e a busca passam a ignorá-la.\n\nResposta esperada: HTTP 204 sem corpo.\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota DELETE /cards/<id>. CardController::destroy, CardService::delete, CardRepositoryInterface::delete. ORM: CardOrmRepository::delete chama delete do SoftDeletes. Query Builder: CardQueryBuilderRepository::delete faz UPDATE de deleted_at. O id ausente responde 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"remove o hipercard\", function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar cartão removido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id_hipercard}}",
+            "description": "Demonstra que o cartão removido no request anterior não é mais visível. O id existiu. A leitura filtra deleted_at, então a resposta é a mesma de um id que nunca existiu.\n\nResposta esperada: HTTP 404, message \"Cartão não encontrado.\".\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota GET /cards/<id>. CardController::show, CardService::show, CardService::requireCard, findById. ORM esconde a linha pelo SoftDeletes. Query Builder usa whereNull deleted_at em CardQueryBuilderRepository::findById."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"o soft delete sai da leitura\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Cartão não encontrado.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cartão inexistente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/999999",
+            "description": "Demonstra o 404 de um id que não está na tabela. A rota exige número. Um id com letras não entra nesta rota.\n\nResposta esperada: HTTP 404, message \"Cartão não encontrado.\".\n\nCaminho no código, com CARD_REPOSITORY=orm ou query_builder:\n- config/routes.php registra a rota no CardController.\n- app/Controller/CardController.php recebe o HTTP e devolve JSON.\n- app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.\n- app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.\n- app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.\n- app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.\n- ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).\n- Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.\n- app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.\nRota GET /cards/<id> com o padrão de um ou mais dígitos. CardController::show, CardService::requireCard, DomainException status 404, DomainExceptionHandler::handle."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"id desconhecido responde 404\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Cartão não encontrado.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mocks",
+      "description": "Chamadas diretas à API, ao cofre e ao adquirente.\n\nvaultUrl e gatewayUrl estão no ambiente local. O timeout do final 66 roda aqui, antes das cobranças da API, porque o mock atende uma requisição por vez. A pasta Transactions vem depois.",
+      "item": [
+        {
+          "name": "Raiz da API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/",
+            "description": "Demonstra o endpoint de apresentação, útil para ver se a porta 9501 é a API e não um dos mocks.\n\nResposta esperada: HTTP 200, name cards-api e os caminhos /health, /cards e /transactions/<id>.\n\nCaminho: config/routes.php Router::get / aponta para app/Controller/HealthController.php HealthController::index. Não há serviço, repositório nem fila."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a raiz apresenta a API\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.name).to.eql(\"cards-api\");",
+                  "  pm.expect(body.health).to.eql(\"/health\");",
+                  "  pm.expect(body.cards).to.eql(\"/cards\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health da API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/health",
+            "description": "Demonstra o health da API Hyperf. O compose usa este caminho no healthcheck.\n\nResposta esperada: HTTP 200 e status ok. Não consulta MySQL nem RabbitMQ.\n\nCaminho: config/routes.php GET /health, app/Controller/HealthController.php HealthController::health."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a API responde ok\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health do cofre",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{vaultUrl}}/health",
+            "description": "Demonstra que a porta 8081 é o mock do cofre, não a API. O campo role vem da variável ROLE=vault.\n\nResposta esperada: HTTP 200, status ok, role vault.\n\nEste request fala direto com o processo vault (ROLE=vault), porta 8081. Não passa pela API Hyperf.\nArquivo: docker/mocks/server.php, função handleVault. Ela recusa CVV, confere o Luhn e grava o PAN só em /data/store.json do volume do cofre. A resposta é o token.\nNa API, o mesmo contrato é chamado por app/Integration/HttpVaultClient.php HttpVaultClient::tokenize.\nO health está no topo de docker/mocks/server.php, antes de handleVault."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"o cofre responde ok\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"ok\");",
+                  "  pm.expect(body.role).to.eql(\"vault\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tokenizar no cofre",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{vaultUrl}}/tokenize",
+            "description": "Demonstra a tokenização isolada. É o mesmo contrato que a API usa ao criar um cartão, chamado aqui sem passar pelo Hyperf. O PAN fica no volume do cofre. A resposta só tem o token.\n\nResposta esperada: HTTP 201 e token com prefixo tok_.\n\nEste request fala direto com o processo vault (ROLE=vault), porta 8081. Não passa pela API Hyperf.\nArquivo: docker/mocks/server.php, função handleVault. Ela recusa CVV, confere o Luhn e grava o PAN só em /data/store.json do volume do cofre. A resposta é o token.\nNa API, o mesmo contrato é chamado por app/Integration/HttpVaultClient.php HttpVaultClient::tokenize.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"4111111111111111\",\n  \"expiry_month\": 12,\n  \"expiry_year\": 2034\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"o cofre devolve um token e nao devolve o PAN\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.token).to.match(/^tok_/);",
+                  "  pm.expect(body).to.not.have.property(\"number\");",
+                  "  save(\"vault_token\", body.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health do adquirente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/health",
+            "description": "Demonstra que a porta 8082 é o mock do adquirente. role gateway separa este processo do cofre, que usa o mesmo server.php.\n\nResposta esperada: HTTP 200, status ok, role gateway.\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.\nO health está no topo de docker/mocks/server.php."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"o adquirente responde ok\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"ok\");",
+                  "  pm.expect(body.role).to.eql(\"gateway\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adquirente aprova",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra a aprovação direta. 1000 centavos não caem nas regras de recusa, falha ou atraso. A chave mentoria-gateway-aprovada fica gravada para o request de replay.\n\nResposta esperada: HTTP 200, status approved, reference com prefixo gw_ e reason nulo.\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_mentoria_aprovada\",\n  \"amount_cents\": 1000,\n  \"idempotency_key\": \"mentoria-gateway-aprovada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"aprova valor que nao termina em 99, 77 ou 66\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"approved\");",
+                  "  pm.expect(body.reference).to.match(/^gw_/);",
+                  "  pm.expect(body.reason).to.eql(null);",
+                  "  save(\"mock_reference\", body.reference);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adquirente recusa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra a recusa de negócio. O final 99 responde HTTP 200 de propósito: a chamada chegou, a venda é que foi recusada. No worker isso vira status declined, sem retentativa e sem DLQ.\n\nResposta esperada: HTTP 200, status declined, reason citando o final 99.\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.\nHttpGatewayClient::charge só retenta HTTP 500 e timeout. Um 200 declined segue para TransactionProcessor::handle e TransactionOrmRepository::markResult.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_mentoria_recusada\",\n  \"amount_cents\": 1099,\n  \"idempotency_key\": \"mentoria-gateway-recusada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"recusa valor terminado em 99 sem erro HTTP\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"declined\");",
+                  "  pm.expect(body.reason).to.include(\"99\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adquirente falha 77",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra a falha técnica, distinta da recusa. HTTP 500 faz o cliente da API retentar. No worker, esgotar TRANSACTION_MAX_ATTEMPTS marca a transação como failed e publica na DLQ. Aqui é só o mock, uma vez.\n\nResposta esperada: HTTP 500 e message \"Falha simulada do adquirente.\".\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.\nHttpGatewayClient::send repete enquanto o status for maior ou igual a 500, até HTTP_RETRY_ATTEMPTS. GatewayException carrega a message do corpo. TransactionProcessor::retryOrFail incrementa attempts.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_mentoria_falha\",\n  \"amount_cents\": 1077,\n  \"idempotency_key\": \"mentoria-gateway-falha\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"valor terminado em 77 responde 500\", function () {",
+                  "  pm.response.to.have.status(500);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Falha simulada do adquirente.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adquirente timeout 66",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra o atraso do adquirente. O final 66 dorme GATEWAY_SLOW_MS, padrão 4000 ms, e só então responde 500. O cliente da API usa GATEWAY_TIMEOUT de 2 segundos, então a corrotina desiste antes e trata como falha de rede. Este request chama o mock direto e espera os 4 segundos.\n\nResposta esperada: HTTP 500, message \"Timeout simulado do adquirente.\" e tempo de resposta de pelo menos 3 segundos. A chave fica gravada: uma repetição com a mesma idempotency_key volta na hora, sem dormir de novo.\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.\nNa API, a primeira tentativa pode estourar GATEWAY_TIMEOUT antes deste corpo. O mock mesmo assim grava a chave. A retentativa de HttpGatewayClient::send lê este 500 na hora e TransactionProcessor::retryOrFail persiste a message. A transação 10.66, mais adiante, mostra o status failed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_mentoria_timeout\",\n  \"amount_cents\": 1066,\n  \"idempotency_key\": \"mentoria-gateway-timeout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"valor terminado em 66 demora e responde 500\", function () {",
+                  "  pm.response.to.have.status(500);",
+                  "  pm.expect(pm.response.json().message).to.eql(\"Timeout simulado do adquirente.\");",
+                  "  pm.expect(pm.response.responseTime).to.be.at.least(3000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay da idempotência",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra o replay do mock. A chave é a mesma de Adquirente aprova. O token enviado agora é outro e o valor é o mesmo, mas o mock nem recalcula a regra: achou a chave em /data/store.json e devolve o corpo guardado, inclusive a mesma reference.\n\nResposta esperada: HTTP 200, status approved e reference igual à variável mock_reference.\n\nEste request fala direto com o processo gateway (ROLE=gateway), porta 8082. Não passa pela fila.\nArquivo: docker/mocks/server.php, função handleGateway. A mesma idempotency_key devolve a resposta gravada, sem cobrar de novo.\nO valor em centavos decide a regra: final 99 recusa em HTTP 200, final 77 responde HTTP 500, final 66 espera GATEWAY_SLOW_MS (4000) e responde HTTP 500. O restante aprova.\nNa API, quem chama isso é app/Integration/HttpGatewayClient.php HttpGatewayClient::charge, a partir do worker.\nNo worker, a proteção complementar está em TransactionProcessor::handle: se o status já não é pending, a mensagem é reconhecida e o adquirente não é chamado de novo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_outro\",\n  \"amount_cents\": 1000,\n  \"idempotency_key\": \"mentoria-gateway-aprovada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a mesma chave devolve a mesma reference\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"approved\");",
+                  "  pm.expect(body.reference).to.eql(pm.collectionVariables.get(\"mock_reference\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "description": "Cobrança assíncrona no cartão Visa da variável card_id.\n\n10.00 aprova, 10.99 recusa, 10.77 vai para a DLQ e 10.66 estoura o timeout do adquirente. O POST responde 202. O GET seguinte espera o worker. A idempotência reapresenta a chave da cobrança aprovada.",
+      "item": [
+        {
+          "name": "Cobrança aprovada 10.00",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}/transactions",
+            "description": "Demonstra a cobrança que o adquirente aprova. 10.00 vira 1000 centavos. O final 00 não é 99, 77 nem 66. A API responde antes do worker chamar o gateway.\n\nResposta esperada: HTTP 202, status pending, amount 10.00, amount_cents 1000, attempts 0, gateway_reference nulo, idempotency_key preenchida e sem token. As variáveis transaction_id, approved_transaction_id e idempotency_key são gravadas para os próximos requests.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nValor específico deste request: Money::toCents de 10.00 produz 1000. O cartão é o Visa da variável card_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.0,\n  \"currency\": \"BRL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"aceita 10 reais e deixa a cobranca pendente\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.status).to.eql(\"pending\");",
+                  "  pm.expect(data.amount).to.eql(\"10.00\");",
+                  "  pm.expect(data.amount_cents).to.eql(1000);",
+                  "  pm.expect(data.currency).to.eql(\"BRL\");",
+                  "  pm.expect(data.attempts).to.eql(0);",
+                  "  pm.expect(data.gateway_reference).to.eql(null);",
+                  "  pm.expect(data.idempotency_key).to.be.a(\"string\");",
+                  "  pm.expect(data).to.not.have.property(\"token\");",
+                  "  save(\"transaction_id\", data.id);",
+                  "  save(\"approved_transaction_id\", data.id);",
+                  "  save(\"idempotency_key\", data.idempotency_key);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status aprovado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/transactions/{{transaction_id}}",
+            "description": "Demonstra a leitura depois da fila. O GET pode pegar a transação ainda pending. O teste consulta de novo, a cada meio segundo, até 20 segundos, até o status sair de pending.\n\nResposta esperada no fim da espera: HTTP 200, status approved, amount 10.00, gateway_reference com prefixo gw_ e failure_reason nulo. A reference vai para a variável gateway_reference.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nO worker aprovou em TransactionProcessor::handle e gravou com TransactionOrmRepository::markResult. O JSON público passa por TransactionMapper::toPublic."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a consulta responde 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"o worker chega em approved\", function (done) {",
+                  "  const id = pm.collectionVariables.get(\"transaction_id\");",
+                  "  const base = pm.collectionVariables.get(\"baseUrl\");",
+                  "  const deadline = Date.now() + 20000;",
+                  "  function poll() {",
+                  "    pm.sendRequest(base + \"/transactions/\" + id, function (err, res) {",
+                  "      if (err) {",
+                  "        done(err);",
+                  "        return;",
+                  "      }",
+                  "      const body = res.json();",
+                  "      if (body.data && body.data.status === \"pending\" && Date.now() < deadline) {",
+                  "        setTimeout(poll, 500);",
+                  "        return;",
+                  "      }",
+                  "      pm.expect(body.data.status).to.eql(\"approved\");",
+                  "      pm.expect(body.data).to.not.have.property(\"token\");",
+                  "",
+                  "      pm.expect(body.data.amount).to.eql(\"10.00\");",
+                  "      pm.expect(body.data.amount_cents).to.eql(1000);",
+                  "      pm.expect(body.data.gateway_reference).to.match(/^gw_/);",
+                  "      pm.expect(body.data.failure_reason).to.eql(null);",
+                  "      save(\"gateway_reference\", body.data.gateway_reference);",
+                  "",
+                  "      done();",
+                  "    });",
+                  "  }",
+                  "  poll();",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cobrança recusada 10.99",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}/transactions",
+            "description": "Demonstra o valor que o adquirente recusa. 10.99 vira 1099 centavos, final 99. A API continua respondendo 202: a recusa só existe depois que o worker consulta o mock.\n\nResposta esperada: HTTP 202, status pending, amount 10.99, amount_cents 1099. transaction_id passa a ser o desta cobrança.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nMoney::toCents usa round de ponto flutuante sobre o valor já em reais com duas casas. 10.99 * 100 cai em 1099. A regra do final 99 está em docker/mocks/server.php handleGateway e não gera retentativa.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.99\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"aceita 10.99 e deixa pendente\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.status).to.eql(\"pending\");",
+                  "  pm.expect(data.amount).to.eql(\"10.99\");",
+                  "  pm.expect(data.amount_cents).to.eql(1099);",
+                  "  save(\"transaction_id\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status recusado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/transactions/{{transaction_id}}",
+            "description": "Demonstra o status final da recusa. O teste espera sair de pending. declined é terminal: uma reentrega da mesma mensagem não cobra de novo, porque TransactionProcessor::handle retorna quando o status já não é pending.\n\nResposta esperada: HTTP 200, status declined, amount_cents 1099, failure_reason citando 99 e gateway_reference preenchida. attempts permanece 0, porque HTTP 200 não é falha técnica.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nmarkResult grava declined, a reference e o reason do adquirente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a consulta responde 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"o worker chega em declined\", function (done) {",
+                  "  const id = pm.collectionVariables.get(\"transaction_id\");",
+                  "  const base = pm.collectionVariables.get(\"baseUrl\");",
+                  "  const deadline = Date.now() + 20000;",
+                  "  function poll() {",
+                  "    pm.sendRequest(base + \"/transactions/\" + id, function (err, res) {",
+                  "      if (err) {",
+                  "        done(err);",
+                  "        return;",
+                  "      }",
+                  "      const body = res.json();",
+                  "      if (body.data && body.data.status === \"pending\" && Date.now() < deadline) {",
+                  "        setTimeout(poll, 500);",
+                  "        return;",
+                  "      }",
+                  "      pm.expect(body.data.status).to.eql(\"declined\");",
+                  "      pm.expect(body.data).to.not.have.property(\"token\");",
+                  "",
+                  "      pm.expect(body.data.amount_cents).to.eql(1099);",
+                  "      pm.expect(body.data.failure_reason).to.include(\"99\");",
+                  "      pm.expect(body.data.gateway_reference).to.match(/^gw_/);",
+                  "",
+                  "      done();",
+                  "    });",
+                  "  }",
+                  "  poll();",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Falha para a DLQ 10.77",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}/transactions",
+            "description": "Demonstra a falha que vai para a DLQ. 10.77 vira 1077, final 77. O mock responde HTTP 500. O cliente tenta de novo e, esgotadas as tentativas do worker, a transação fica failed e a mensagem vai para card.transactions.dlq.\n\nResposta esperada deste POST: HTTP 202, status pending, amount_cents 1077. O desfecho está no request seguinte.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nO 500 sai de handleGateway. HttpGatewayClient::send retenta. GatewayException leva a message \"Falha simulada do adquirente.\". TransactionProcessor::retryOrFail e, no limite, finishAsFailed, que chama AmqpDeadLetterPublisher::publish e DeadLetterProducerMessage. O consumidor devolve Result::REQUEUE enquanto a exceção for RecoverableTransactionException, em TransactionConsumer::consumeMessage.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.77\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"aceita 10.77 e deixa pendente\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.status).to.eql(\"pending\");",
+                  "  pm.expect(data.amount_cents).to.eql(1077);",
+                  "  save(\"transaction_id\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status da DLQ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/transactions/{{transaction_id}}",
+            "description": "Demonstra o estado depois das tentativas. O teste espera até 30 segundos. Cada passagem do worker conta um attempt. O padrão TRANSACTION_MAX_ATTEMPTS é 3. Dentro de cada passagem o cliente HTTP ainda repete o 500 algumas vezes. Isso não aparece em attempts: attempts conta o ciclo do worker.\n\nResposta esperada: HTTP 200, status failed, amount_cents 1077, attempts pelo menos 3, failure_reason com \"Falha simulada\" e gateway_reference nulo. A mensagem correspondente está na fila card.transactions.dlq. A interface do RabbitMQ é http://127.0.0.1:15672, usuário cards, senha cards.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a consulta responde 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"o worker chega em failed\", function (done) {",
+                  "  const id = pm.collectionVariables.get(\"transaction_id\");",
+                  "  const base = pm.collectionVariables.get(\"baseUrl\");",
+                  "  const deadline = Date.now() + 30000;",
+                  "  function poll() {",
+                  "    pm.sendRequest(base + \"/transactions/\" + id, function (err, res) {",
+                  "      if (err) {",
+                  "        done(err);",
+                  "        return;",
+                  "      }",
+                  "      const body = res.json();",
+                  "      if (body.data && body.data.status === \"pending\" && Date.now() < deadline) {",
+                  "        setTimeout(poll, 500);",
+                  "        return;",
+                  "      }",
+                  "      pm.expect(body.data.status).to.eql(\"failed\");",
+                  "      pm.expect(body.data).to.not.have.property(\"token\");",
+                  "",
+                  "      pm.expect(body.data.amount_cents).to.eql(1077);",
+                  "      pm.expect(body.data.attempts).to.be.at.least(3);",
+                  "      pm.expect(body.data.failure_reason).to.include(\"Falha simulada\");",
+                  "      pm.expect(body.data.gateway_reference).to.eql(null);",
+                  "",
+                  "      done();",
+                  "    });",
+                  "  }",
+                  "  poll();",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repetir idempotency_key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/transactions",
+            "description": "Demonstra a idempotência nos dois lados. A chave é a idempotency_key gravada na cobrança de 10.00, que o worker já apresentou ao adquirente. Este POST repete a chave com outro token. O mock devolve a mesma reference, guardada na variável gateway_reference. O teste também relê a transação na API: o status segue approved e a reference não muda. Reentregar a mensagem da fila cairia no retorno antecipado de TransactionProcessor::handle, porque o status já não é pending.\n\nResposta esperada: HTTP 200 do adquirente, status approved e a mesma reference. A API continua approved.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nA gravação da primeira resposta está em docker/mocks/server.php handleGateway, no ramo que encontra a chave em /data/store.json. A chave nasce em TransactionService::create, Uuid::v4, e viaja na TransactionProducerMessage. O consumidor não gera outra chave.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"tok_replay_da_api\",\n  \"amount_cents\": 1000,\n  \"idempotency_key\": \"{{idempotency_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"o adquirente repete a aprovacao da API\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql(\"approved\");",
+                  "  pm.expect(body.reference).to.eql(pm.collectionVariables.get(\"gateway_reference\"));",
+                  "});",
+                  "",
+                  "pm.test(\"a transacao da API continua aprovada\", function (done) {",
+                  "  const base = pm.collectionVariables.get(\"baseUrl\");",
+                  "  const id = pm.collectionVariables.get(\"approved_transaction_id\");",
+                  "  pm.sendRequest(base + \"/transactions/\" + id, function (err, res) {",
+                  "    if (err) {",
+                  "      done(err);",
+                  "      return;",
+                  "    }",
+                  "    const data = res.json().data;",
+                  "    pm.expect(data.status).to.eql(\"approved\");",
+                  "    pm.expect(data.gateway_reference).to.eql(pm.collectionVariables.get(\"gateway_reference\"));",
+                  "    done();",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timeout 10.66",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cards/{{card_id}}/transactions",
+            "description": "Demonstra o valor que faz o adquirente dormir. 10.66 vira 1066, final 66. O POST da API é rápido: quem espera é o worker, com timeout de 2 segundos, enquanto o mock segura a conexão por cerca de 4. Este request fica por último para não atravessar os outros calls ao adquirente. O servidor embutido do mock atende uma requisição por vez.\n\nResposta esperada: HTTP 202, status pending, amount 10.66, amount_cents 1066. O desfecho, no request seguinte, é failed com a message do mock.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nO atraso é GATEWAY_SLOW_MS em docker/mocks/server.php. GATEWAY_TIMEOUT no cliente é 2 segundos. A primeira ida pode estourar esse limite, mas o mock grava o 500 ao terminar o sono. A retentativa do mesmo HttpGatewayClient::send encontra a chave e lê o corpo na hora. A message que sobe é \"Timeout simulado do adquirente.\", não um erro de rede genérico. O request direto Adquirente timeout 66 mede os 4 segundos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.66\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"aceita 10.66 e deixa pendente\", function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.status).to.eql(\"pending\");",
+                  "  pm.expect(data.amount).to.eql(\"10.66\");",
+                  "  pm.expect(data.amount_cents).to.eql(1066);",
+                  "  save(\"transaction_id\", data.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status do timeout",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/transactions/{{transaction_id}}",
+            "description": "Demonstra o desfecho do timeout. O teste espera até 90 segundos. Cada tentativa do worker estoura o timeout de 2 segundos, e o mock ainda completa o sono de 4 segundos antes de atender a próxima. Com 3 tentativas do worker, a transação termina failed e a mensagem vai para a DLQ.\n\nResposta esperada: HTTP 200, status failed, amount_cents 1066, attempts pelo menos 3, failure_reason contendo \"Timeout simulado\" e gateway_reference nulo. O teste espera até 90 segundos. Na prática o mock atende a primeira chamada devagar e as seguintes em replay, então o worker chega no failed bem antes disso.\n\nCaminho no código:\n- config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.\n- app/Request/TransactionStoreRequest.php valida amount e currency.\n- app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.\n- app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.\n- O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).\n- app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.\n- app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.\n- O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.\n- app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.\n- Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.\n- A topologia está em config/amqp_topology.php e bin/declare-topology.php.\n- GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.\nNão confunda com o final 77, cuja message é \"Falha simulada do adquirente.\" e volta na hora. Aqui a message é a do corpo do mock depois do atraso. O tempo de 4 segundos aparece no request direto Adquirente timeout 66, na pasta Mocks."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "  pm.collectionVariables.set(name, String(value));",
+                  "  try {",
+                  "    pm.environment.set(name, String(value));",
+                  "  } catch (error) {}",
+                  "}",
+                  "pm.test(\"a consulta responde 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"o worker chega em failed\", function (done) {",
+                  "  const id = pm.collectionVariables.get(\"transaction_id\");",
+                  "  const base = pm.collectionVariables.get(\"baseUrl\");",
+                  "  const deadline = Date.now() + 90000;",
+                  "  function poll() {",
+                  "    pm.sendRequest(base + \"/transactions/\" + id, function (err, res) {",
+                  "      if (err) {",
+                  "        done(err);",
+                  "        return;",
+                  "      }",
+                  "      const body = res.json();",
+                  "      if (body.data && body.data.status === \"pending\" && Date.now() < deadline) {",
+                  "        setTimeout(poll, 500);",
+                  "        return;",
+                  "      }",
+                  "      pm.expect(body.data.status).to.eql(\"failed\");",
+                  "      pm.expect(body.data).to.not.have.property(\"token\");",
+                  "",
+                  "      pm.expect(body.data.amount_cents).to.eql(1066);",
+                  "      pm.expect(body.data.attempts).to.be.at.least(3);",
+                  "      pm.expect(body.data.failure_reason).to.include(\"Timeout simulado\");",
+                  "      pm.expect(body.data.gateway_reference).to.eql(null);",
+                  "",
+                  "      done();",
+                  "    });",
+                  "  }",
+                  "  poll();",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

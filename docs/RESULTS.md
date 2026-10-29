@@ -263,3 +263,347 @@ Transações no MySQL:
 3  1077  failed    attempts=3  Falha simulada do adquirente.
 4  1500  approved  attempts=0  gw_fd0370050e62
 ```
+
+## Coleções Bruno e Postman
+
+Executado em 29/10/2026, depois do merge do PR #1, com a stack já no ar (`CARD_REPOSITORY=orm` na API). Antes de cada runner apaguei os cartões de validade 2034 e as transações deles, e zerei `/data/store.json` do adquirente, para o final 66 dormir de novo em vez de fazer replay da execução anterior.
+
+Ferramentas: Bruno CLI 4.3.0 e Newman 6.2.3.
+
+```bash
+cd bruno && bru run --env local
+newman run postman/cards-api.postman_collection.json \
+  -e postman/local.postman_environment.json \
+  --timeout-request 30000 --timeout-script 120000
+```
+
+Os dois terminaram com código 0. Bruno: 36 requests, 36 testes. Newman: 36 scripts de teste, 41 assertions, 0 falhas. O Newman conta 55 requests porque o teste de status consulta a transação de novo até sair de `pending`. O request mais lento foi o timeout direto no adquirente, cerca de 4 segundos.
+
+### Bruno
+
+```text
+Cards/01-criar-visa (201 Created) - 17 ms
+Tests
+   ✓ cria o cartao visa
+Cards/02-criar-mastercard (201 Created) - 9 ms
+Tests
+   ✓ cria o cartao mastercard
+Cards/03-criar-elo (201 Created) - 12 ms
+Tests
+   ✓ cria o cartao elo que comeca com 4
+Cards/04-criar-amex (201 Created) - 8 ms
+Tests
+   ✓ cria o cartao amex de 15 digitos
+Cards/05-criar-hipercard (201 Created) - 9 ms
+Tests
+   ✓ cria o cartao hipercard
+Cards/06-luhn-invalido (422 Unprocessable Entity) - 2 ms
+Tests
+   ✓ rejeita PAN que nao passa no Luhn
+Cards/07-cartao-vencido (422 Unprocessable Entity) - 2 ms
+Tests
+   ✓ rejeita cartao vencido
+Cards/08-campos-ausentes (422 Unprocessable Entity) - 2 ms
+Tests
+   ✓ rejeita corpo incompleto
+Cards/09-cvv-recusado (422 Unprocessable Entity) - 3 ms
+Tests
+   ✓ recusa CVV
+Cards/10-cartao-duplicado (409 Conflict) - 4 ms
+Tests
+   ✓ recusa o mesmo BIN, final e validade
+Cards/11-listar-paginado (200 OK) - 4 ms
+Tests
+   ✓ devolve uma pagina de dois cartoes
+Cards/12-filtrar-bandeira (200 OK) - 5 ms
+Tests
+   ✓ so devolve visa
+Cards/13-buscar-cartao (200 OK) - 3 ms
+Tests
+   ✓ busca o visa criado
+Cards/14-atualizar-cartao (200 OK) - 11 ms
+Tests
+   ✓ atualiza o nome e preserva a bandeira
+Cards/15-remover-hipercard (204 No Content) - 4 ms
+Tests
+   ✓ remove o hipercard
+Cards/16-buscar-removido (404 Not Found) - 3 ms
+Tests
+   ✓ o soft delete sai da leitura
+Cards/17-cartao-inexistente (404 Not Found) - 3 ms
+Tests
+   ✓ id desconhecido responde 404
+Mocks/01-raiz-da-api (200 OK) - 1 ms
+Tests
+   ✓ a raiz apresenta a API
+Mocks/02-health-da-api (200 OK) - 1 ms
+Tests
+   ✓ a API responde ok
+Mocks/03-health-do-cofre (200 OK) - 2 ms
+Tests
+   ✓ o cofre responde ok
+Mocks/04-tokenizar-no-cofre (201 Created) - 1 ms
+Tests
+   ✓ o cofre devolve um token e nao devolve o PAN
+Mocks/05-health-do-adquirente (200 OK) - 1 ms
+Tests
+   ✓ o adquirente responde ok
+Mocks/06-adquirente-aprova (200 OK) - 1 ms
+Tests
+   ✓ aprova valor que nao termina em 99, 77 ou 66
+Mocks/07-adquirente-recusa (200 OK) - 1 ms
+Tests
+   ✓ recusa valor terminado em 99 sem erro HTTP
+Mocks/08-adquirente-falha-77 (500 Internal Server Error) - 1 ms
+Tests
+   ✓ valor terminado em 77 responde 500
+Mocks/09-adquirente-timeout-66 (500 Internal Server Error) - 4002 ms
+Tests
+   ✓ valor terminado em 66 demora e responde 500
+Mocks/10-replay-da-idempotencia (200 OK) - 1 ms
+Tests
+   ✓ a mesma chave devolve a mesma reference
+Transactions/01-cobranca-aprovada (202 Accepted) - 6 ms
+Tests
+   ✓ aceita 10 reais e deixa a cobranca pendente
+Transactions/02-status-aprovado (200 OK) - 4 ms
+Tests
+   ✓ o worker chega em approved
+Transactions/03-cobranca-recusada (202 Accepted) - 7 ms
+Tests
+   ✓ aceita 10.99 e deixa pendente
+Transactions/04-status-recusado (200 OK) - 3 ms
+Tests
+   ✓ o worker chega em declined
+Transactions/05-falha-dlq (202 Accepted) - 6 ms
+Tests
+   ✓ aceita 10.77 e deixa pendente
+Transactions/06-status-da-dlq (200 OK) - 2 ms
+Tests
+   ✓ o worker chega em failed
+Transactions/07-repetir-idempotencia (200 OK) - 1 ms
+Tests
+   ✓ o adquirente repete a aprovacao da API
+Transactions/08-timeout-10-66 (202 Accepted) - 9 ms
+Tests
+   ✓ aceita 10.66 e deixa pendente
+Transactions/09-status-do-timeout (200 OK) - 4 ms
+Tests
+   ✓ o worker chega em failed
+
+📊 Execution Summary
+┌───────────────┬────────────────┐
+│ Metric        │     Result     │
+├───────────────┼────────────────┤
+│ Status        │     ✓ PASS     │
+├───────────────┼────────────────┤
+│ Requests      │ 36 (36 Passed) │
+├───────────────┼────────────────┤
+│ Tests         │     36/36      │
+├───────────────┼────────────────┤
+│ Assertions    │      0/0       │
+├───────────────┼────────────────┤
+│ Duration (ms) │     14067      │
+└───────────────┴────────────────┘
+EXIT:0
+```
+
+### Newman
+
+```text
+newman
+
+Cards API
+
+❏ Cards
+↳ Criar Visa
+  POST http://127.0.0.1:9501/cards [201 Created, 477B, 27ms]
+  ✓  cria o cartao visa
+
+↳ Criar Mastercard
+  POST http://127.0.0.1:9501/cards [201 Created, 489B, 10ms]
+  ✓  cria o cartao mastercard
+
+↳ Criar Elo
+  POST http://127.0.0.1:9501/cards [201 Created, 475B, 9ms]
+  ✓  cria o cartao elo que comeca com 4
+
+↳ Criar Amex
+  POST http://127.0.0.1:9501/cards [201 Created, 477B, 10ms]
+  ✓  cria o cartao amex de 15 digitos
+
+↳ Criar Hipercard
+  POST http://127.0.0.1:9501/cards [201 Created, 487B, 9ms]
+  ✓  cria o cartao hipercard
+
+↳ Luhn inválido
+  POST http://127.0.0.1:9501/cards [422 Unprocessable Entity, 258B, 2ms]
+  ✓  rejeita PAN que nao passa no Luhn
+
+↳ Cartão vencido
+  POST http://127.0.0.1:9501/cards [422 Unprocessable Entity, 245B, 3ms]
+  ✓  rejeita cartao vencido
+
+↳ Campos ausentes
+  POST http://127.0.0.1:9501/cards [422 Unprocessable Entity, 464B, 2ms]
+  ✓  rejeita corpo incompleto
+
+↳ CVV recusado
+  POST http://127.0.0.1:9501/cards [422 Unprocessable Entity, 339B, 3ms]
+  ✓  recusa CVV
+
+↳ Cartão duplicado
+  POST http://127.0.0.1:9501/cards [409 Conflict, 279B, 3ms]
+  ✓  recusa o mesmo BIN, final e validade
+
+↳ Listar com paginação
+  GET http://127.0.0.1:9501/cards?page=1&per_page=2 [200 OK, 826B, 4ms]
+  ✓  devolve uma pagina de dois cartoes
+
+↳ Filtrar por bandeira
+  GET http://127.0.0.1:9501/cards?brand=visa&per_page=50 [200 OK, 1.09kB, 3ms]
+  ✓  so devolve visa
+
+↳ Buscar cartão
+  GET http://127.0.0.1:9501/cards/23 [200 OK, 472B, 2ms]
+  ✓  busca o visa criado
+
+↳ Atualizar cartão
+  PUT http://127.0.0.1:9501/cards/23 [200 OK, 483B, 7ms]
+  ✓  atualiza o nome e preserva a bandeira
+
+↳ Remover Hipercard
+  DELETE http://127.0.0.1:9501/cards/27 [204 No Content, 164B, 6ms]
+  ✓  remove o hipercard
+
+↳ Buscar cartão removido
+  GET http://127.0.0.1:9501/cards/27 [404 Not Found, 242B, 3ms]
+  ✓  o soft delete sai da leitura
+
+↳ Cartão inexistente
+  GET http://127.0.0.1:9501/cards/999999 [404 Not Found, 242B, 3ms]
+  ✓  id desconhecido responde 404
+
+❏ Mocks
+↳ Raiz da API
+  GET http://127.0.0.1:9501/ [200 OK, 281B, 2ms]
+  ✓  a raiz apresenta a API
+
+↳ Health da API
+  GET http://127.0.0.1:9501/health [200 OK, 178B, 2ms]
+  ✓  a API responde ok
+
+↳ Health do cofre
+  GET http://127.0.0.1:8081/health [200 OK, 200B, 1ms]
+  ✓  o cofre responde ok
+
+↳ Tokenizar no cofre
+  POST http://127.0.0.1:8081/tokenize [201 Created, 223B, 2ms]
+  ✓  o cofre devolve um token e nao devolve o PAN
+
+↳ Health do adquirente
+  GET http://127.0.0.1:8082/health [200 OK, 202B, 2ms]
+  ✓  o adquirente responde ok
+
+↳ Adquirente aprova
+  POST http://127.0.0.1:8082/transactions [200 OK, 235B, 2ms]
+  ✓  aprova valor que nao termina em 99, 77 ou 66
+
+↳ Adquirente recusa
+  POST http://127.0.0.1:8082/transactions [200 OK, 292B, 1ms]
+  ✓  recusa valor terminado em 99 sem erro HTTP
+
+↳ Adquirente falha 77
+  POST http://127.0.0.1:8082/transactions [500 Internal Server Error, 232B, 2ms]
+  ✓  valor terminado em 77 responde 500
+
+↳ Adquirente timeout 66
+  POST http://127.0.0.1:8082/transactions [500 Internal Server Error, 234B, 4s]
+  ✓  valor terminado em 66 demora e responde 500
+
+↳ Replay da idempotência
+  POST http://127.0.0.1:8082/transactions [200 OK, 235B, 1ms]
+  ✓  a mesma chave devolve a mesma reference
+
+❏ Transactions
+↳ Cobrança aprovada 10.00
+  POST http://127.0.0.1:9501/cards/23/transactions [202 Accepted, 483B, 9ms]
+  ✓  aceita 10 reais e deixa a cobranca pendente
+
+↳ Status aprovado
+  GET http://127.0.0.1:9501/transactions/13 [200 OK, 491B, 2ms]
+  ✓  a consulta responde 200
+  GET http://127.0.0.1:9501/transactions/13 [200 OK, 491B, 2ms]
+  ✓  o worker chega em approved
+
+↳ Cobrança recusada 10.99
+  POST http://127.0.0.1:9501/cards/23/transactions [202 Accepted, 483B, 5ms]
+  ✓  aceita 10.99 e deixa pendente
+
+↳ Status recusado
+  GET http://127.0.0.1:9501/transactions/14 [200 OK, 548B, 2ms]
+  ✓  a consulta responde 200
+  GET http://127.0.0.1:9501/transactions/14 [200 OK, 548B, 3ms]
+  ✓  o worker chega em declined
+
+↳ Falha para a DLQ 10.77
+  POST http://127.0.0.1:9501/cards/23/transactions [202 Accepted, 483B, 5ms]
+  ✓  aceita 10.77 e deixa pendente
+
+↳ Status da DLQ
+  GET http://127.0.0.1:9501/transactions/15 [200 OK, 477B, 3ms]
+  ✓  a consulta responde 200
+  GET http://127.0.0.1:9501/transactions/15 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/15 [200 OK, 477B, 2ms]
+  GET http://127.0.0.1:9501/transactions/15 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/15 [200 OK, 503B, 4ms]
+  ✓  o worker chega em failed
+
+↳ Repetir idempotency_key
+  POST http://127.0.0.1:8082/transactions [200 OK, 235B, 1ms]
+  ✓  o adquirente repete a aprovacao da API
+  GET http://127.0.0.1:9501/transactions/13 [200 OK, 491B, 3ms]
+  ✓  a transacao da API continua aprovada
+
+↳ Timeout 10.66
+  POST http://127.0.0.1:9501/cards/23/transactions [202 Accepted, 483B, 5ms]
+  ✓  aceita 10.66 e deixa pendente
+
+↳ Status do timeout
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  ✓  a consulta responde 200
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 2ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 4ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 4ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 4ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 2ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 3ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 477B, 4ms]
+  GET http://127.0.0.1:9501/transactions/16 [200 OK, 505B, 4ms]
+  ✓  o worker chega em failed
+
+┌─────────────────────────┬──────────────────┬─────────────────┐
+│                         │         executed │          failed │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              iterations │                1 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│                requests │               55 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│            test-scripts │               36 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│      prerequest-scripts │                0 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              assertions │               41 │               0 │
+├─────────────────────────┴──────────────────┴─────────────────┤
+│ total run duration: 11.6s                                    │
+├──────────────────────────────────────────────────────────────┤
+│ total data received: 12.9kB (approx)                         │
+├──────────────────────────────────────────────────────────────┤
+│ average response time: 76ms [min: 1ms, max: 4s, s.d.: 534ms] │
+└──────────────────────────────────────────────────────────────┘
+EXIT:0
+```

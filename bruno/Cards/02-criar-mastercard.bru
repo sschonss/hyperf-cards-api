@@ -1,0 +1,67 @@
+meta {
+  name: Criar Mastercard
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": "Mastercard Mentoria",
+    "number": "5555555555554444",
+    "expiry_month": 12,
+    "expiry_year": 2034
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.data && body.data.id) {
+    bru.setVar("card_id_mastercard", String(body.data.id));
+  }
+}
+
+tests {
+  test("cria o cartao mastercard", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(201);
+    expect(data.brand).to.equal("mastercard");
+    expect(data.bin).to.equal("555555");
+    expect(data.last_four).to.equal("4444");
+    expect(data.token).to.match(/^tok_/);
+    expect(JSON.stringify(data)).to.not.include("5555555555554444");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a faixa Mastercard 51-55. O PAN 5555555555554444 é o de teste clássico. A validade 12/2034 difere do seed (11/2030), então o cadastro é outro cartão, não uma duplicata.
+
+  Resposta esperada: HTTP 201, brand mastercard, BIN 555555, final 4444, token tok_.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  CardBrandDetector::detect olha os dois primeiros dígitos entre 51 e 55, e também a faixa 2221-2720. Método: CardController::store, CardService::create. Rota POST /cards.
+}

@@ -1,0 +1,55 @@
+meta {
+  name: Tokenizar no cofre
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{vaultUrl}}/tokenize
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "number": "4111111111111111",
+    "expiry_month": 12,
+    "expiry_year": 2034
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.token) {
+    bru.setVar("vault_token", body.token);
+  }
+}
+
+tests {
+  test("o cofre devolve um token e nao devolve o PAN", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(201);
+    expect(body.token).to.match(/^tok_/);
+    expect(body).to.not.have.property("number");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a tokenização isolada. É o mesmo contrato que a API usa ao criar um cartão, chamado aqui sem passar pelo Hyperf. O PAN fica no volume do cofre. A resposta só tem o token.
+
+  Resposta esperada: HTTP 201 e token com prefixo tok_.
+
+  Este request fala direto com o processo vault (ROLE=vault), porta 8081. Não passa pela API Hyperf.
+  Arquivo: docker/mocks/server.php, função handleVault. Ela recusa CVV, confere o Luhn e grava o PAN só em /data/store.json do volume do cofre. A resposta é o token.
+  Na API, o mesmo contrato é chamado por app/Integration/HttpVaultClient.php HttpVaultClient::tokenize.
+}

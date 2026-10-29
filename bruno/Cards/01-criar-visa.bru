@@ -1,0 +1,71 @@
+meta {
+  name: Criar Visa
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": "Visa Mentoria",
+    "number": "4111111111111111",
+    "expiry_month": 12,
+    "expiry_year": 2034
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.data && body.data.id) {
+    bru.setVar("card_id", String(body.data.id));
+  }
+}
+
+tests {
+  test("cria o cartao visa", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(201);
+    expect(data.brand).to.equal("visa");
+    expect(data.bin).to.equal("411111");
+    expect(data.last_four).to.equal("1111");
+    expect(data.masked_number).to.equal("411111******1111");
+    expect(data.token).to.match(/^tok_/);
+    expect(data).to.not.have.property("number");
+    expect(JSON.stringify(data)).to.not.include("4111111111111111");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o cadastro de um Visa de teste. A validade 12/2034 não colide com o seed, que usa 2030.
+
+  Resposta esperada: HTTP 201. O JSON traz brand visa, BIN 411111, final 1111, masked_number e um token tok_. O PAN completo não volta.
+
+  O id fica na variável card_id e segue para a busca, a atualização e as cobranças.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  Neste request o método é CardController::store e CardService::create, rota POST /cards.
+}

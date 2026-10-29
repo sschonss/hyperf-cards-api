@@ -1,0 +1,46 @@
+meta {
+  name: Cartão inexistente
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{baseUrl}}/cards/999999
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("id desconhecido responde 404", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(404);
+    expect(body.message).to.equal("Cartão não encontrado.");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o 404 de um id que não está na tabela. A rota exige número. Um id com letras não entra nesta rota.
+
+  Resposta esperada: HTTP 404, message "Cartão não encontrado.".
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  Rota GET /cards/<id> com o padrão de um ou mais dígitos. CardController::show, CardService::requireCard, DomainException status 404, DomainExceptionHandler::handle.
+}
