@@ -1,0 +1,66 @@
+meta {
+  name: Repetir idempotency_key
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{gatewayUrl}}/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "token": "tok_replay_da_api",
+    "amount_cents": 1000,
+    "idempotency_key": "{{idempotency_key}}"
+  }
+}
+
+tests {
+  const axios = require("axios");
+
+  test("o adquirente repete a aprovacao da API", async function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.status).to.equal("approved");
+    expect(body.reference).to.equal(bru.getVar("gateway_reference"));
+
+    const url = bru.getEnvVar("baseUrl") + "/transactions/" + bru.getVar("approved_transaction_id");
+    const again = await axios.get(url);
+    expect(again.data.data.status).to.equal("approved");
+    expect(again.data.data.gateway_reference).to.equal(bru.getVar("gateway_reference"));
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a idempotência nos dois lados. A chave é a idempotency_key gravada na cobrança de 10.00, que o worker já apresentou ao adquirente. Este POST repete a chave com outro token. O mock devolve a mesma reference, guardada na variável gateway_reference. O teste também relê a transação na API: o status segue approved e a reference não muda. Reentregar a mensagem da fila cairia no retorno antecipado de TransactionProcessor::handle, porque o status já não é pending.
+
+  Resposta esperada: HTTP 200 do adquirente, status approved e a mesma reference. A API continua approved.
+
+  Caminho no código:
+  - config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.
+  - app/Request/TransactionStoreRequest.php valida amount e currency.
+  - app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.
+  - app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.
+  - O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).
+  - app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.
+  - app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.
+  - O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.
+  - app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.
+  - Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.
+  - A topologia está em config/amqp_topology.php e bin/declare-topology.php.
+  - GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.
+  A gravação da primeira resposta está em docker/mocks/server.php handleGateway, no ramo que encontra a chave em /data/store.json. A chave nasce em TransactionService::create, Uuid::v4, e viaja na TransactionProducerMessage. O consumidor não gera outra chave.
+}

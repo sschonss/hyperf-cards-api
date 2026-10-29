@@ -1,0 +1,57 @@
+meta {
+  name: Campos ausentes
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": ""
+  }
+}
+
+tests {
+  test("rejeita corpo incompleto", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(422);
+    expect(body.message).to.equal("Os dados enviados são inválidos.");
+    expect(body.errors).to.have.property("number");
+    expect(body.errors).to.have.property("holder_name");
+    expect(body.errors).to.have.property("expiry_month");
+    expect(body.errors).to.have.property("expiry_year");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a validação de entrada antes de qualquer regra de negócio. O corpo não tem PAN nem validade, e o nome vem vazio.
+
+  Resposta esperada: HTTP 422, message "Os dados enviados são inválidos." e o objeto errors com number, holder_name, expiry_month e expiry_year. CardService não roda.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  app/Request/CardStoreRequest.php CardStoreRequest::rules e messages. app/Exception/Handler/ValidationExceptionHandler.php ValidationExceptionHandler::handle. Rota POST /cards. O controller só chama o serviço depois de CardStoreRequest::validated.
+}

@@ -1,0 +1,44 @@
+meta {
+  name: Remover Hipercard
+  type: http
+  seq: 15
+}
+
+delete {
+  url: {{baseUrl}}/cards/{{card_id_hipercard}}
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("remove o hipercard", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o soft delete do Hipercard criado nesta coleção. O Visa de card_id continua, porque as cobranças usam ele. A linha não some: deleted_at é preenchido. A listagem e a busca passam a ignorá-la.
+
+  Resposta esperada: HTTP 204 sem corpo.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  Rota DELETE /cards/<id>. CardController::destroy, CardService::delete, CardRepositoryInterface::delete. ORM: CardOrmRepository::delete chama delete do SoftDeletes. Query Builder: CardQueryBuilderRepository::delete faz UPDATE de deleted_at. O id ausente responde 404.
+}

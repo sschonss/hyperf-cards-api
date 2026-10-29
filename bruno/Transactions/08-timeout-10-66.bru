@@ -1,0 +1,65 @@
+meta {
+  name: Timeout 10.66
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/cards/{{card_id}}/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "amount": 10.66
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.data && body.data.id) {
+    bru.setVar("transaction_id", String(body.data.id));
+  }
+}
+
+tests {
+  test("aceita 10.66 e deixa pendente", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(202);
+    expect(data.status).to.equal("pending");
+    expect(data.amount).to.equal("10.66");
+    expect(data.amount_cents).to.equal(1066);
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o valor que faz o adquirente dormir. 10.66 vira 1066, final 66. O POST da API é rápido: quem espera é o worker, com timeout de 2 segundos, enquanto o mock segura a conexão por cerca de 4. Este request fica por último para não atravessar os outros calls ao adquirente. O servidor embutido do mock atende uma requisição por vez.
+
+  Resposta esperada: HTTP 202, status pending, amount 10.66, amount_cents 1066. O desfecho, no request seguinte, é failed com a message do mock.
+
+  Caminho no código:
+  - config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.
+  - app/Request/TransactionStoreRequest.php valida amount e currency.
+  - app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.
+  - app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.
+  - O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).
+  - app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.
+  - app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.
+  - O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.
+  - app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.
+  - Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.
+  - A topologia está em config/amqp_topology.php e bin/declare-topology.php.
+  - GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.
+  O atraso é GATEWAY_SLOW_MS em docker/mocks/server.php. GATEWAY_TIMEOUT no cliente é 2 segundos. A primeira ida pode estourar esse limite, mas o mock grava o 500 ao terminar o sono. A retentativa do mesmo HttpGatewayClient::send encontra a chave e lê o corpo na hora. A message que sobe é "Timeout simulado do adquirente.", não um erro de rede genérico. O request direto Adquirente timeout 66 mede os 4 segundos.
+}

@@ -1,0 +1,10 @@
+meta {
+  name: Transactions
+  seq: 3
+}
+
+docs {
+  Cobrança assíncrona no cartão Visa da variável card_id.
+
+  10.00 aprova, 10.99 recusa, 10.77 vai para a DLQ e 10.66 estoura o timeout do adquirente. O POST responde 202. O GET seguinte espera o worker. A idempotência reapresenta a chave da cobrança aprovada.
+}

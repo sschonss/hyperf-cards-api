@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Cards API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

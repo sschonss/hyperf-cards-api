@@ -1,0 +1,66 @@
+meta {
+  name: Criar Elo
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "holder_name": "Elo Mentoria",
+    "number": "4011780000000006",
+    "expiry_month": 12,
+    "expiry_year": 2034
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (body && body.data && body.data.id) {
+    bru.setVar("card_id_elo", String(body.data.id));
+  }
+}
+
+tests {
+  test("cria o cartao elo que comeca com 4", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(201);
+    expect(data.brand).to.equal("elo");
+    expect(data.bin).to.equal("401178");
+    expect(data.last_four).to.equal("0006");
+    expect(data.brand).to.not.equal("visa");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra que Elo é testado antes da Visa. O BIN 401178 começa com 4, mas está na lista ELO_RANGES. Se a ordem estivesse invertida, este cartão seria classificado como Visa.
+
+  Resposta esperada: HTTP 201, brand elo, BIN 401178, final 0006.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  CardBrandDetector::isElo roda no início de CardBrandDetector::detect. Rota POST /cards, CardController::store, CardService::create.
+}

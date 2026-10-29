@@ -1,0 +1,73 @@
+meta {
+  name: Cobrança aprovada 10.00
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/cards/{{card_id}}/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json
+  content-type: application/json
+}
+
+body:json {
+  {
+    "amount": 10.0,
+    "currency": "BRL"
+  }
+}
+
+script:post-response {
+  const data = res.getBody() && res.getBody().data;
+  if (data && data.id) {
+    bru.setVar("transaction_id", String(data.id));
+    bru.setVar("approved_transaction_id", String(data.id));
+    bru.setVar("idempotency_key", String(data.idempotency_key));
+  }
+}
+
+tests {
+  test("aceita 10 reais e deixa a cobranca pendente", function () {
+    const data = res.getBody().data;
+    expect(res.getStatus()).to.equal(202);
+    expect(data.status).to.equal("pending");
+    expect(data.amount).to.equal("10.00");
+    expect(data.amount_cents).to.equal(1000);
+    expect(data.currency).to.equal("BRL");
+    expect(data.attempts).to.equal(0);
+    expect(data.gateway_reference).to.equal(null);
+    expect(data.idempotency_key).to.be.a("string");
+    expect(data).to.not.have.property("token");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra a cobrança que o adquirente aprova. 10.00 vira 1000 centavos. O final 00 não é 99, 77 nem 66. A API responde antes do worker chamar o gateway.
+
+  Resposta esperada: HTTP 202, status pending, amount 10.00, amount_cents 1000, attempts 0, gateway_reference nulo, idempotency_key preenchida e sem token. As variáveis transaction_id, approved_transaction_id e idempotency_key são gravadas para os próximos requests.
+
+  Caminho no código:
+  - config/routes.php registra POST /cards/<id>/transactions e GET /transactions/<id> no TransactionController.
+  - app/Request/TransactionStoreRequest.php valida amount e currency.
+  - app/Controller/TransactionController.php TransactionController::store responde 202. O adquirente ainda não foi chamado.
+  - app/Service/TransactionService.php TransactionService::create converte o valor em app/Support/Money.php Money::toCents, gera a chave em app/Support/Uuid.php Uuid::v4, grava status pending e publica.
+  - O cartão é lido por CardRepositoryInterface::findById (ORM ou Query Builder, conforme CARD_REPOSITORY).
+  - app/Repository/TransactionOrmRepository.php TransactionOrmRepository::create persiste com app/Model/Transaction.php.
+  - app/Integration/AmqpTransactionPublisher.php AmqpTransactionPublisher::publish envia app/Amqp/Producer/TransactionProducerMessage.php para a exchange cards, routing key transactions, fila card.transactions.
+  - O worker, com AMQP_CONSUMER_ENABLED=true, executa app/Amqp/Consumer/TransactionConsumer.php TransactionConsumer::consumeMessage.
+  - app/Service/TransactionProcessor.php TransactionProcessor::handle chama app/Integration/HttpGatewayClient.php HttpGatewayClient::charge.
+  - Sucesso: TransactionOrmRepository::markResult. Falha recuperável: incrementAttempts e Result::REQUEUE. Esgotou as tentativas: markResult failed e app/Integration/AmqpDeadLetterPublisher.php publica em cards.dlx / card.transactions.dlq.
+  - A topologia está em config/amqp_topology.php e bin/declare-topology.php.
+  - GET de status: TransactionController::show, TransactionService::show, TransactionOrmRepository::findById, TransactionMapper::toPublic. O token não volta no JSON.
+  Valor específico deste request: Money::toCents de 10.00 produz 1000. O cartão é o Visa da variável card_id.
+}

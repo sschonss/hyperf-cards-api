@@ -266,6 +266,39 @@ O alvo migra `cards_testing` e roda o PHPUnit duas vezes, com `CARD_REPOSITORY=o
 
 O `co-phpunit` executa dentro de uma corrotina, e `pcntl_fork` não funciona nesse contexto. O bootstrap dos testes varre as anotações com `ProcScanHandler`.
 
+## Importar no Bruno e no Postman
+
+As coleções em [bruno/](bruno) e [postman/](postman) repetem o fluxo da aula: cinco bandeiras, erros de validação, listagem, cobrança aprovada, recusada, DLQ e timeout. Cada request descreve, em português, o que ele mostra, a resposta esperada e o caminho no código (rota, controller, serviço, repositório ORM e Query Builder, model, cliente HTTP ou fila). O mapa completo está em [docs/GUIA-DE-CODIGO.md](docs/GUIA-DE-CODIGO.md).
+
+A ordem de execução é Cards, depois Mocks, depois Transactions. Os mocks chamam o cofre e o adquirente direto, inclusive o atraso de quatro segundos do valor terminado em 66. As transações da API vêm depois, para o worker não disputar esse atraso com o request do mock. A cobrança `10.66` é o último request.
+
+Os cartões de exemplo usam validade 12/2034. O seed usa 2030, então os dois convivem. Rodar a coleção de novo sem apagar esses cartões devolve 409 na criação. O script de pós-resposta guarda `card_id` e `transaction_id` para os requests seguintes.
+
+Suba a stack antes (`docker compose up -d --wait`, `make migrate`, `make seed`).
+
+### Bruno
+
+Abra a pasta `bruno/` como coleção (Open Collection) e escolha o ambiente `local`. As URLs estão em `bruno/environments/local.bru`: `baseUrl`, `vaultUrl` e `gatewayUrl`.
+
+No terminal, a partir de `bruno/`:
+
+```bash
+bru run --env local
+```
+
+O CLI é o pacote `@usebruno/cli`.
+
+### Postman
+
+Importe `postman/cards-api.postman_collection.json` e `postman/local.postman_environment.json`. Selecione o ambiente `local`.
+
+```bash
+newman run postman/cards-api.postman_collection.json \
+  -e postman/local.postman_environment.json
+```
+
+A coleção também traz `baseUrl`, `vaultUrl` e `gatewayUrl` como variáveis da coleção. O ambiente, quando selecionado, é o que vale na hora de resolver a URL.
+
 ## Layout
 
 ```text

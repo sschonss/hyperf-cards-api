@@ -1,0 +1,50 @@
+meta {
+  name: Filtrar por bandeira
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/cards?brand=visa&per_page=50
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("so devolve visa", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.meta.total).to.be.at.least(1);
+    expect(body.data.length).to.be.at.least(1);
+    for (let i = 0; i < body.data.length; i++) {
+      expect(body.data[i].brand).to.equal("visa");
+    }
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o filtro brand. O valor tem de ser uma das bandeiras de CardBrandDetector::BRANDS: visa, mastercard, elo, amex, hipercard. Outro valor volta 422 ainda no FormRequest.
+
+  Resposta esperada: HTTP 200 e todos os itens com brand visa. Entram o Visa desta coleção e, se o seed rodou, o cartão da Ada Lovelace.
+
+  Caminho no código, com CARD_REPOSITORY=orm ou query_builder:
+  - config/routes.php registra a rota no CardController.
+  - app/Controller/CardController.php recebe o HTTP e devolve JSON.
+  - app/Service/CardService.php aplica Luhn, validade, bandeira, duplicata e chama o cofre.
+  - app/Support/Luhn.php Luhn::isValid e app/Service/CardBrandDetector.php CardBrandDetector::detect.
+  - app/Integration/HttpVaultClient.php HttpVaultClient::tokenize, pela porta VaultClientInterface.
+  - app/Repository/CardRepositoryInterface.php é a porta. A implementação ativa está em config/autoload/dependencies.php.
+  - ORM: app/Repository/CardOrmRepository.php usa app/Model/Card.php (SoftDeletes).
+  - Query Builder: app/Repository/CardQueryBuilderRepository.php usa Db::table, preenche timestamps e filtra deleted_at.
+  - app/Repository/CardMapper.php devolve o mesmo array nos dois modos. O PAN não entra nesse array.
+  Rota GET /cards. CardIndexRequest valida brand. CardController::index, CardService::list, paginate com o filtro. No ORM o where fica em CardOrmRepository::paginate. No Query Builder, em CardQueryBuilderRepository::paginate, junto com whereNull deleted_at.
+}

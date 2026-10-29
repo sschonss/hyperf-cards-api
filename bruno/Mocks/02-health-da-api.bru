@@ -1,0 +1,35 @@
+meta {
+  name: Health da API
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+headers {
+  accept: application/json
+}
+
+tests {
+  test("a API responde ok", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("ok");
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 15000
+}
+
+docs {
+  Demonstra o health da API Hyperf. O compose usa este caminho no healthcheck.
+
+  Resposta esperada: HTTP 200 e status ok. Não consulta MySQL nem RabbitMQ.
+
+  Caminho: config/routes.php GET /health, app/Controller/HealthController.php HealthController::health.
+}
